@@ -7,7 +7,7 @@ class should give a roughly normal, bell-shaped distribution centered near 0.
 
 - Single file: `index.html` (no build step, works on any Chromebook browser)
 - Controls: **Space** (or Enter, or tap/click the screen)
-- Default: 2 practice rounds (not recorded) + 20 recorded rounds
+- Default: 2 practice rounds (not recorded) + 30 recorded rounds
 - The slider moves at a constant speed (700 px/s) so every part of the track is equally fast
 - Each round starts from a random end after a random short pause, so students can't memorize a rhythm
 - The track is a fixed 600 px wide on every device so everyone's pixels mean the same thing
@@ -18,7 +18,7 @@ Edit the `CONFIG` block at the top of the `<script>` in `index.html`, or overrid
 
 | Link parameter | Default | Meaning |
 |---|---|---|
-| `rounds` | 20 | recorded rounds per student |
+| `rounds` | 30 | recorded rounds per student |
 | `practice` | 2 | warm-up rounds (not recorded) |
 | `speed` | 700 | slider speed, pixels per second (higher = harder, wider spread) |
 | `width` | 600 | track width in pixels |
@@ -36,7 +36,7 @@ Example: `.../index.html?rounds=10&practice=0`
 4. Copy the **Web app URL** (ends in `/exec`) and paste it into `SHEET_URL` in `index.html`.
 
 Every round is written as a row in a tab named **Data**:
-`Timestamp, Name, Period, Session, Round, Distance (px), Abs distance (px), Side, Speed, Track width`.
+`Name, Period, Round, Distance (px), Side`.
 Share the Sheet with students as **Viewer** (or have them File → Make a copy) for analysis.
 
 If a save fails (e.g. Wi-Fi drop), the game retries, and the results screen offers

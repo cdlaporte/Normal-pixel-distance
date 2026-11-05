@@ -11,8 +11,7 @@
  */
 
 const SHEET_NAME = 'Data';
-const HEADERS = ['Timestamp', 'Name', 'Period', 'Session', 'Round', 'Distance (px)',
-                 'Abs distance (px)', 'Side', 'Speed (px/s)', 'Track width (px)'];
+const HEADERS = ['Name', 'Period', 'Round', 'Distance (px)', 'Side'];
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
@@ -23,16 +22,11 @@ function doPost(e) {
       const d = Math.round(Number(r.distance_px));
       if (!Number.isFinite(d)) throw new Error('bad distance');
       return [
-        r.timestamp ? new Date(r.timestamp) : new Date(),
         String(r.name || '').slice(0, 60),
         String(r.period || '').slice(0, 30),
-        String(r.session || '').slice(0, 30),
         Number(r.round) || '',
         d,
-        Math.abs(d),
         d > 0 ? 'right' : d < 0 ? 'left' : 'center',
-        Number(r.speed) || '',
-        Number(r.track_width) || '',
       ];
     });
     if (rows.length) {
