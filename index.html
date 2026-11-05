@@ -159,6 +159,15 @@ const SPEED    = Math.max(50, num("speed", CONFIG.SPEED));
 const TRACK_W  = Math.max(200, Math.round(num("width", CONFIG.TRACK_WIDTH)));
 const SHEET_URL = params.get("sheet") || CONFIG.SHEET_URL;
 
+/* Only a student's FIRST complete game is sent to the spreadsheet. After that,
+   this browser is remembered and later games are "free play" (not recorded).
+   Teacher reset for a device: open the game with ?reset=1 */
+const DONE_KEY = "cl_completed";
+if (params.has("reset")) { try { localStorage.removeItem(DONE_KEY); } catch (_) {} }
+function hasCompleted() { try { return !!localStorage.getItem(DONE_KEY); } catch (_) { return false; } }
+function markCompleted() { try { localStorage.setItem(DONE_KEY, new Date().toISOString()); } catch (_) {} }
+let recording = true;          // false = free play, nothing is sent
+
 /* ---------- Geometry ---------- */
 const PAD = 24;                 // space at each end of the canvas
 const CANVAS_W = TRACK_W + PAD * 2;
@@ -282,7 +291,8 @@ function beginRound() {
   $("roundLabel").textContent = isPractice()
     ? `Practice ${roundIndex + 1} of ${PRACTICE}`
     : `Round ${recordedNumber()} of ${ROUNDS}`;
-  $("practiceTag").classList.toggle("hidden", !isPractice());
+  $("practiceTag").textContent = isPractice() ? "Practice" : "Free play · not recorded";
+  $("practiceTag").classList.toggle("hidden", !isPractice() && recording);
   $("result").innerHTML = "&nbsp;";
   $("prompt").textContent = "Get ready…";
 
@@ -322,7 +332,7 @@ function stopSlider(eventTime) {
       timestamp: new Date().toISOString(),
     };
     results.push(row);
-    sendRow(row);
+    if (recording) sendRow(row);
   }
 
   const last = roundIndex === PRACTICE + ROUNDS - 1;
@@ -366,6 +376,7 @@ function startGame() {
   roundIndex = 0;
   results = [];
   pending = 0; failed = [];
+  recording = !!SHEET_URL && !hasCompleted();
   showScreen("game");
   document.activeElement && document.activeElement.blur();
   beginRound();
@@ -373,6 +384,8 @@ function startGame() {
 
 function finish() {
   phase = "finished";
+  if (recording) markCompleted();
+  updateStartNote();
   showScreen("done");
   const xs = results.map(r => r.distance_px);
   const n = xs.length;
@@ -451,7 +464,7 @@ async function retryFailed() {
 
 function setSendStatus() {
   const el = $("sendStatus");
-  if (!SHEET_URL) { el.textContent = ""; return; }
+  if (!SHEET_URL || !recording) { el.textContent = ""; return; }
   el.classList.toggle("err", failed.length > 0);
   el.textContent = failed.length ? `⚠ ${failed.length} round(s) not saved yet — will retry at the end`
                  : pending ? "Saving…" : "✓ Saved";
@@ -461,7 +474,9 @@ function updateFinalStatus() {
   const el = $("finalStatus");
   if (phase !== "finished") return;
   el.classList.remove("err");
-  if (!SHEET_URL) {
+  if (SHEET_URL && !recording) {
+    el.textContent = "Free play — these results were not sent to the class spreadsheet.";
+  } else if (!SHEET_URL) {
     el.textContent = "This game isn't connected to a spreadsheet — use “Download my data” to keep your results.";
   } else if (pending) {
     el.textContent = "Saving your results to the class spreadsheet…";
@@ -479,7 +494,14 @@ setupCanvas();
 draw(null);
 $("ruleText").textContent = (PRACTICE ? `You get ${PRACTICE} practice round${PRACTICE > 1 ? "s" : ""}, then ` : "You'll play ") +
   `${ROUNDS} recorded round${ROUNDS > 1 ? "s" : ""}. Your distance from the line is measured in pixels: right is positive, left is negative.`;
-$("connStatus").textContent = SHEET_URL ? "" : "Not connected to a spreadsheet (results can be downloaded at the end).";
+function updateStartNote() {
+  $("connStatus").textContent = !SHEET_URL
+    ? "Not connected to a spreadsheet (results can be downloaded at the end)."
+    : hasCompleted()
+      ? "You've already submitted your rounds. You can keep playing for fun, but these games won't be recorded."
+      : "";
+}
+updateStartNote();
 try {
   const saved = JSON.parse(localStorage.getItem("cl_student") || "null");
   if (saved) { $("name").value = saved.name || ""; $("period").value = saved.period || ""; }

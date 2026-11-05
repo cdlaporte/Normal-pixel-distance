@@ -10,6 +10,7 @@ class should give a roughly normal, bell-shaped distribution centered near 0.
 - Default: 2 practice rounds (not recorded) + 30 recorded rounds
 - The slider moves at a constant speed (700 px/s) so every part of the track is equally fast
 - Each round starts from a random end after a random short pause, so students can't memorize a rhythm
+- Only a student's **first complete game** is sent to the Sheet. "Play again" (even after reloading) is free play and isn't recorded. To let a device record again, open the game link with `?reset=1` added.
 - The track is a fixed 600 px wide on every device so everyone's pixels mean the same thing
 
 ## Settings
