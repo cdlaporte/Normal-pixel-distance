@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Center Line</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --ink: #1d232b;
+    --muted: #5f6b7a;
+    --line: #d4d9e0;
+    --track: #e9edf2;
+    --target: #d7263d;
+    --slider: #2563eb;
+    --good: #15803d;
+    --warn: #b45309;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 18px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 28px 32px;
+    width: 100%;
+    max-width: 760px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.05);
+  }
+  h1 { font-size: 28px; margin: 0 0 6px; }
+  p { margin: 8px 0; }
+  .muted { color: var(--muted); }
+  .hidden { display: none !important; }
+  label { display: block; font-weight: 600; margin: 16px 0 6px; }
+  input[type=text] {
+    width: 100%; font: inherit; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  button {
+    font: inherit; font-weight: 600;
+    background: var(--slider); color: #fff;
+    border: 0; border-radius: 8px;
+    padding: 12px 22px; margin-top: 20px; cursor: pointer;
+  }
+  button.secondary { background: #e5e9ef; color: var(--ink); }
+  button:disabled { opacity: .5; cursor: default; }
+  kbd {
+    font: 600 15px ui-monospace, monospace;
+    border: 1px solid var(--line); border-bottom-width: 3px;
+    border-radius: 6px; padding: 1px 8px; background: #fafbfc;
+  }
+
+  /* Game screen */
+  .hud { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .round { font-size: 22px; font-weight: 700; }
+  .tag { font-size: 14px; font-weight: 700; color: var(--warn); text-transform: uppercase; letter-spacing: .05em; }
+  .stage { margin: 26px auto 10px; position: relative; }
+  canvas { display: block; margin: 0 auto; touch-action: manipulation; }
+  .result {
+    text-align: center; font-size: 40px; font-weight: 800; min-height: 60px;
+    font-variant-numeric: tabular-nums;
+  }
+  .result small { display: block; font-size: 16px; font-weight: 500; color: var(--muted); }
+  .prompt { text-align: center; color: var(--muted); min-height: 28px; }
+  .status { font-size: 14px; text-align: right; color: var(--muted); min-height: 20px; }
+  .status.err { color: var(--target); }
+
+  /* Results screen */
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 4px 8px; text-align: right; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  .tablewrap { max-height: 260px; overflow-y: auto; margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; }
+  .stats { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 10px; }
+  .stats div b { display: block; font-size: 24px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<main class="card">
+
+  <!-- ===== Start screen ===== -->
+  <section id="start">
+    <h1>Hit the Center Line</h1>
+    <p>A blue slider moves back and forth. Press <kbd>Space</kbd> (or tap the screen)
+       to stop it as close to the <b style="color:var(--target)">red center line</b> as you can.</p>
+    <p class="muted" id="ruleText"></p>
+
+    <label for="name">Your name</label>
+    <input type="text" id="name" autocomplete="off" maxlength="60" placeholder="First and last name">
+
+    <label for="period">Class period / section</label>
+    <input type="text" id="period" autocomplete="off" maxlength="30" placeholder="e.g. 3">
+
+    <button id="startBtn">Start</button>
+    <p class="status" id="connStatus"></p>
+  </section>
+
+  <!-- ===== Game screen ===== -->
+  <section id="game" class="hidden">
+    <div class="hud">
+      <span class="round" id="roundLabel">Round 1</span>
+      <span class="tag" id="practiceTag">Practice</span>
+    </div>
+    <div class="stage">
+      <canvas id="cv"></canvas>
+    </div>
+    <div class="result" id="result">&nbsp;</div>
+    <div class="prompt" id="prompt"></div>
+    <div class="status" id="sendStatus"></div>
+  </section>
+
+  <!-- ===== Results screen ===== -->
+  <section id="done" class="hidden">
+    <h1>All done!</h1>
+    <p class="muted">Positive = stopped to the right of the line, negative = to the left (in pixels).</p>
+    <div class="stats" id="stats"></div>
+    <div class="tablewrap"><table id="table"></table></div>
+    <div class="row">
+      <button id="csvBtn" class="secondary">Download my data (CSV)</button>
+      <button id="againBtn" class="secondary">Play again</button>
+    </div>
+    <p class="status" id="finalStatus"></p>
+  </section>
+
+</main>
+
+<script>
+/* =====================================================================
+   SETTINGS — the teacher can change these.
+   Any of them can also be overridden in the link, e.g.
+     index.html?rounds=10&practice=0&speed=600
+   ===================================================================== */
+const CONFIG = {
+  // Paste your Google Apps Script web-app URL here (see README.md).
+  // Leave empty to run without a spreadsheet (students can still download a CSV).
+  SHEET_URL: "",
+
+  ROUNDS: 20,          // recorded rounds per student
+  PRACTICE: 2,         // un-recorded warm-up rounds before the real ones
+  SPEED: 700,          // slider speed in pixels per second
+  TRACK_WIDTH: 600,    // width of the track in CSS pixels (keep the same for everyone!)
+};
+
+const params = new URLSearchParams(location.search);
+const num = (k, d) => { const v = Number(params.get(k)); return params.has(k) && Number.isFinite(v) && v >= 0 ? v : d; };
+const ROUNDS   = Math.max(1, Math.round(num("rounds", CONFIG.ROUNDS)));
+const PRACTICE = Math.round(num("practice", CONFIG.PRACTICE));
+const SPEED    = Math.max(50, num("speed", CONFIG.SPEED));
+const TRACK_W  = Math.max(200, Math.round(num("width", CONFIG.TRACK_WIDTH)));
+const SHEET_URL = params.get("sheet") || CONFIG.SHEET_URL;
+
+/* ---------- Geometry ---------- */
+const PAD = 24;                 // space at each end of the canvas
+const CANVAS_W = TRACK_W + PAD * 2;
+const CANVAS_H = 150;
+const TRACK_Y = 75;             // vertical middle of the track
+const CENTER_X = PAD + TRACK_W / 2;
+const HALF = TRACK_W / 2;
+
+const $ = id => document.getElementById(id);
+const cv = $("cv");
+const ctx = cv.getContext("2d");
+
+function setupCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  cv.style.width = CANVAS_W + "px";
+  cv.style.height = CANVAS_H + "px";
+  cv.width = Math.round(CANVAS_W * dpr);
+  cv.height = Math.round(CANVAS_H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+/* ---------- State ---------- */
+let student = { name: "", period: "" };
+let sessionId = "";
+let roundIndex = 0;            // 0 .. PRACTICE+ROUNDS-1
+let phase = "idle";            // idle | ready | moving | stopped | finished
+let motion = null;             // { t0, startOffset, dir }
+let stoppedOffset = null;      // offset (px from center) where the slider stopped
+let results = [];              // recorded rounds only
+let rafId = 0;
+let readyAt = 0;               // ignore key presses until this time (prevents double-press)
+
+const isPractice = () => roundIndex < PRACTICE;
+const recordedNumber = () => roundIndex - PRACTICE + 1;
+
+/* Slider offset from the center (px) at time t. Constant-speed back-and-forth
+   ("ping-pong") so the slider is equally fast everywhere on the track. */
+function offsetAt(t) {
+  const L = TRACK_W;                         // one full sweep length
+  let d = (motion.startOffset + HALF) + motion.dir * SPEED * (t - motion.t0) / 1000;
+  d = ((d % (2 * L)) + 2 * L) % (2 * L);     // position along a 2L cycle
+  const pos = d <= L ? d : 2 * L - d;        // 0..L
+  return pos - HALF;                         // -HALF..+HALF
+}
+
+/* ---------- Drawing ---------- */
+function draw(offset, opts = {}) {
+  ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+
+  // track
+  ctx.fillStyle = getCss("--track");
+  roundRect(PAD, TRACK_Y - 18, TRACK_W, 36, 18);
+  ctx.fill();
+
+  // tick marks every 50 px (no numbers, so students can't "read" the ruler)
+  ctx.strokeStyle = getCss("--line");
+  ctx.lineWidth = 1;
+  for (let x = -HALF; x <= HALF; x += 50) {
+    if (x === 0) continue;
+    const px = Math.round(CENTER_X + x) + 0.5;
+    ctx.beginPath(); ctx.moveTo(px, TRACK_Y - 8); ctx.lineTo(px, TRACK_Y + 8); ctx.stroke();
+  }
+
+  // center target line + dot
+  ctx.strokeStyle = getCss("--target");
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(CENTER_X, TRACK_Y - 55); ctx.lineTo(CENTER_X, TRACK_Y + 55); ctx.stroke();
+  ctx.fillStyle = getCss("--target");
+  ctx.beginPath(); ctx.arc(CENTER_X, TRACK_Y, 5, 0, Math.PI * 2); ctx.fill();
+
+  if (offset == null) return;
+
+  // slider: a thin vertical bar with a pointer; its exact center is what is measured
+  const x = CENTER_X + offset;
+  ctx.fillStyle = getCss("--slider");
+  ctx.globalAlpha = opts.faded ? 0.35 : 1;
+  ctx.fillRect(x - 2, TRACK_Y - 32, 4, 64);
+  ctx.beginPath();                       // little triangles above and below
+  ctx.moveTo(x - 8, TRACK_Y - 42); ctx.lineTo(x + 8, TRACK_Y - 42); ctx.lineTo(x, TRACK_Y - 32); ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x - 8, TRACK_Y + 42); ctx.lineTo(x + 8, TRACK_Y + 42); ctx.lineTo(x, TRACK_Y + 32); ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // after stopping, show the gap between the slider and the line
+  if (opts.showGap && Math.round(offset) !== 0) {
+    ctx.strokeStyle = getCss("--ink");
+    ctx.lineWidth = 1.5;
+    const y = TRACK_Y + 52;
+    ctx.beginPath(); ctx.moveTo(CENTER_X, y); ctx.lineTo(x, y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x, y + 5); ctx.stroke();
+  }
+}
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+const cssCache = {};
+function getCss(name) {
+  return cssCache[name] || (cssCache[name] = getComputedStyle(document.documentElement).getPropertyValue(name).trim());
+}
+
+function loop() {
+  if (phase !== "moving") return;
+  draw(offsetAt(performance.now()));
+  rafId = requestAnimationFrame(loop);
+}
+
+/* ---------- Round flow ---------- */
+function showScreen(id) {
+  for (const s of ["start", "game", "done"]) $(s).classList.toggle("hidden", s !== id);
+}
+
+function beginRound() {
+  phase = "ready";
+  stoppedOffset = null;
+  $("roundLabel").textContent = isPractice()
+    ? `Practice ${roundIndex + 1} of ${PRACTICE}`
+    : `Round ${recordedNumber()} of ${ROUNDS}`;
+  $("practiceTag").classList.toggle("hidden", !isPractice());
+  $("result").innerHTML = "&nbsp;";
+  $("prompt").textContent = "Get ready…";
+
+  // start at a random end, moving inward, after a short random pause,
+  // so students can't just memorize a rhythm.
+  const fromLeft = Math.random() < 0.5;
+  const startOffset = fromLeft ? -HALF : HALF;
+  draw(startOffset);
+  const delay = 600 + Math.random() * 600;
+  setTimeout(() => {
+    if (phase !== "ready") return;
+    motion = { t0: performance.now(), startOffset, dir: fromLeft ? 1 : -1 };
+    phase = "moving";
+    $("prompt").innerHTML = "Press <kbd>Space</kbd> when the slider is on the red line!";
+    loop();
+  }, delay);
+}
+
+function stopSlider(eventTime) {
+  // Use the time of the key press itself (not the last drawn frame) for accuracy.
+  const t = Math.min(eventTime || performance.now(), performance.now());
+  cancelAnimationFrame(rafId);
+  stoppedOffset = offsetAt(t);
+  phase = "stopped";
+  const px = Math.round(stoppedOffset);
+  draw(stoppedOffset, { showGap: true });
+
+  const sign = px > 0 ? "+" : "";
+  const side = px > 0 ? "right of the line" : px < 0 ? "left of the line" : "dead center!";
+  $("result").innerHTML = `${sign}${px} px<small>${Math.abs(px)} pixels ${px === 0 ? "— " + side : side}</small>`;
+  $("result").style.color = Math.abs(px) <= 5 ? "var(--good)" : "var(--ink)";
+
+  if (!isPractice()) {
+    const row = {
+      round: recordedNumber(),
+      distance_px: px,
+      timestamp: new Date().toISOString(),
+    };
+    results.push(row);
+    sendRow(row);
+  }
+
+  const last = roundIndex === PRACTICE + ROUNDS - 1;
+  $("prompt").innerHTML = last
+    ? "Press <kbd>Space</kbd> to see your results"
+    : `Press <kbd>Space</kbd> for the ${roundIndex + 1 === PRACTICE ? "real rounds" : "next round"}`;
+  readyAt = performance.now() + 500;
+}
+
+function advance() {
+  if (performance.now() < readyAt) return;
+  roundIndex++;
+  if (roundIndex >= PRACTICE + ROUNDS) finish();
+  else beginRound();
+}
+
+function handleAction(eventTime) {
+  if (phase === "moving") stopSlider(eventTime);
+  else if (phase === "stopped") advance();
+}
+
+/* ---------- Input ---------- */
+document.addEventListener("keydown", e => {
+  if ($("game").classList.contains("hidden")) return;
+  if (e.code === "Space" || e.key === " " || e.key === "Enter") {
+    e.preventDefault();
+    if (e.repeat) return;               // holding the key down doesn't count
+    handleAction(e.timeStamp);
+  }
+});
+// Touchscreen / trackpad tap anywhere on the game card
+$("game").addEventListener("pointerdown", e => { e.preventDefault(); handleAction(e.timeStamp); });
+
+/* ---------- Start / finish ---------- */
+function startGame() {
+  const name = $("name").value.trim();
+  if (!name) { $("name").focus(); $("name").style.borderColor = "var(--target)"; return; }
+  student = { name, period: $("period").value.trim() };
+  try { localStorage.setItem("cl_student", JSON.stringify(student)); } catch (_) {}
+  sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  roundIndex = 0;
+  results = [];
+  pending = 0; failed = [];
+  showScreen("game");
+  document.activeElement && document.activeElement.blur();
+  beginRound();
+}
+
+function finish() {
+  phase = "finished";
+  showScreen("done");
+  const xs = results.map(r => r.distance_px);
+  const n = xs.length;
+  const mean = xs.reduce((a, b) => a + b, 0) / n;
+  const sd = n > 1 ? Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1)) : 0;
+  const closest = xs.reduce((a, b) => Math.abs(b) < Math.abs(a) ? b : a, xs[0]);
+  $("stats").innerHTML = `
+    <div><span class="muted">Rounds</span><b>${n}</b></div>
+    <div><span class="muted">Average</span><b>${mean.toFixed(1)} px</b></div>
+    <div><span class="muted">Std. dev.</span><b>${sd.toFixed(1)} px</b></div>
+    <div><span class="muted">Closest</span><b>${closest > 0 ? "+" : ""}${closest} px</b></div>`;
+  $("table").innerHTML = "<tr><th>Round</th><th>Distance (px)</th></tr>" +
+    results.map(r => `<tr><td>${r.round}</td><td>${r.distance_px > 0 ? "+" : ""}${r.distance_px}</td></tr>`).join("");
+  updateFinalStatus();
+}
+
+function downloadCsv() {
+  const header = "name,period,round,distance_px,timestamp";
+  const esc = s => `"${String(s).replace(/"/g, '""')}"`;
+  const lines = results.map(r => [esc(student.name), esc(student.period), r.round, r.distance_px, r.timestamp].join(","));
+  const blob = new Blob([header + "\n" + lines.join("\n") + "\n"], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `center-line-${student.name.replace(/\W+/g, "_") || "data"}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/* ---------- Google Sheet upload ---------- */
+let pending = 0;
+let failed = [];
+
+async function postRows(rows) {
+  const body = JSON.stringify({
+    rows: rows.map(r => ({
+      ...r,
+      name: student.name,
+      period: student.period,
+      session: sessionId,
+      speed: SPEED,
+      track_width: TRACK_W,
+    })),
+  });
+  // text/plain avoids a CORS preflight, which Apps Script doesn't support.
+  const res = await fetch(SHEET_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json().catch(() => ({}));
+  if (data.ok === false) throw new Error(data.error || "rejected");
+}
+
+async function sendRow(row) {
+  if (!SHEET_URL) return;
+  pending++;
+  setSendStatus();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await postRows([row]);
+      pending--; setSendStatus(); updateFinalStatus();
+      return;
+    } catch (err) {
+      await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+  pending--;
+  failed.push(row);
+  setSendStatus(); updateFinalStatus();
+}
+
+async function retryFailed() {
+  const rows = failed; failed = [];
+  pending += rows.length; updateFinalStatus();
+  try { await postRows(rows); }
+  catch (_) { failed.push(...rows); }
+  pending -= rows.length; updateFinalStatus();
+}
+
+function setSendStatus() {
+  const el = $("sendStatus");
+  if (!SHEET_URL) { el.textContent = ""; return; }
+  el.classList.toggle("err", failed.length > 0);
+  el.textContent = failed.length ? `⚠ ${failed.length} round(s) not saved yet — will retry at the end`
+                 : pending ? "Saving…" : "✓ Saved";
+}
+
+function updateFinalStatus() {
+  const el = $("finalStatus");
+  if (phase !== "finished") return;
+  el.classList.remove("err");
+  if (!SHEET_URL) {
+    el.textContent = "This game isn't connected to a spreadsheet — use “Download my data” to keep your results.";
+  } else if (pending) {
+    el.textContent = "Saving your results to the class spreadsheet…";
+  } else if (failed.length) {
+    el.classList.add("err");
+    el.innerHTML = `⚠ ${failed.length} round(s) couldn't be saved. <button id="retryBtn" class="secondary" style="margin:0 0 0 8px;padding:4px 12px">Try again</button>`;
+    $("retryBtn").onclick = retryFailed;
+  } else {
+    el.textContent = "✓ All rounds saved to the class spreadsheet.";
+  }
+}
+
+/* ---------- Wire up ---------- */
+setupCanvas();
+draw(null);
+$("ruleText").textContent = (PRACTICE ? `You get ${PRACTICE} practice round${PRACTICE > 1 ? "s" : ""}, then ` : "You'll play ") +
+  `${ROUNDS} recorded round${ROUNDS > 1 ? "s" : ""}. Your distance from the line is measured in pixels: right is positive, left is negative.`;
+$("connStatus").textContent = SHEET_URL ? "" : "Not connected to a spreadsheet (results can be downloaded at the end).";
+try {
+  const saved = JSON.parse(localStorage.getItem("cl_student") || "null");
+  if (saved) { $("name").value = saved.name || ""; $("period").value = saved.period || ""; }
+} catch (_) {}
+$("startBtn").onclick = startGame;
+$("name").addEventListener("keydown", e => { if (e.key === "Enter") startGame(); });
+$("period").addEventListener("keydown", e => { if (e.key === "Enter") startGame(); });
+$("csvBtn").onclick = downloadCsv;
+$("againBtn").onclick = () => showScreen("start");
+window.addEventListener("beforeunload", e => { if (pending || failed.length) { e.preventDefault(); e.returnValue = ""; } });
+
+// Make the track fit narrow screens by scaling the canvas visually
+// (the measured distance is always in track pixels, so data stays comparable).
+function fit() {
+  const avail = $("game").parentElement.clientWidth - 64;
+  const scale = Math.min(1, avail / CANVAS_W);
+  cv.style.transform = scale < 1 ? `scale(${scale})` : "";
+  cv.style.transformOrigin = "center top";
+}
+window.addEventListener("resize", fit);
+new ResizeObserver(fit).observe($("game"));
+</script>
+</body>
+</html>
